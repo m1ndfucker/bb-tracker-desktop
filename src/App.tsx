@@ -7,7 +7,8 @@ import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useHotkeys } from './hooks/useHotkeys'
 import { COLORS, formatTime, MILESTONE_ICONS, STAT_ICONS, BASE_URL } from './lib/constants'
-import type { BossFight, Milestone, CharacterStats, PendingBoss, DailyStats, StatsDelta, DeathPoint, TimelinePoint } from './lib/types'
+import type { BossFight, Milestone, CharacterStats, PendingBoss, DailyStats, DeathPoint, TimelinePoint, GameCharacterStats, GameStatsDelta, EldenRingCharacterStats } from './lib/types'
+import { isBloodborneStats, isEldenRingStats, isBloodborneStatsDelta, isEldenRingStatsDelta } from './lib/types'
 import { ProfileList } from './components/ProfileList'
 import { OverlayWindow } from './pages/OverlayWindow'
 import { resolveVisualConfig } from './lib/presetUtils'
@@ -33,8 +34,8 @@ function formatDateShort(dateStr: string): string {
 }
 
 // Get last stats entry per day for level chart
-function getStatsByDay(stats: CharacterStats[]): { date: string; stats: CharacterStats }[] {
-  const byDay = new Map<string, CharacterStats>()
+function getStatsByDay(stats: GameCharacterStats[]): { date: string; stats: GameCharacterStats }[] {
+  const byDay = new Map<string, GameCharacterStats>()
 
   const sorted = [...stats].sort((a, b) =>
     new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -783,7 +784,7 @@ function App() {
     | { type: 'boss_pause'; bossId: string; time: number }
     | { type: 'boss_resume'; bossId: string; time: number }
     | { type: 'milestone'; data: Milestone; time: number }
-    | { type: 'stats'; data: CharacterStats; time: number }
+    | { type: 'stats'; data: GameCharacterStats; time: number }
     | { type: 'death'; index: number; time: number; deathNumber: number; createdAt?: string }
 
   const sortedPanelEvents = useMemo((): PanelEvent[] => {
@@ -861,7 +862,7 @@ function App() {
     const byDate = new Map<string, {
       deaths: typeof state.deathTimestamps
       bosses: BossFight[]
-      stats: CharacterStats[]
+      stats: GameCharacterStats[]
       milestones: Milestone[]
       eventTimes: number[]
     }>()
@@ -919,7 +920,7 @@ function App() {
 
     // Build daily stats with deltas - process in chronological order for proper delta calculation
     const result: DailyStats[] = []
-    let prevDayStats: CharacterStats | null = null
+    let prevDayStats: GameCharacterStats | null = null
 
     // Process in chronological order (oldest first) to calculate deltas correctly
     const chronologicalDates = [...dates].reverse()
@@ -932,17 +933,32 @@ function App() {
         ? day.stats.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
         : null
 
-      // Compute delta with previous day's stats
-      let delta: StatsDelta | null = null
+      // Compute delta with previous day's stats (only for same game type)
+      let delta: GameStatsDelta | null = null
       if (dayStats && prevDayStats) {
-        delta = {
-          level: dayStats.level - prevDayStats.level,
-          vitality: dayStats.vitality - prevDayStats.vitality,
-          endurance: dayStats.endurance - prevDayStats.endurance,
-          strength: dayStats.strength - prevDayStats.strength,
-          skill: dayStats.skill - prevDayStats.skill,
-          bloodtinge: dayStats.bloodtinge - prevDayStats.bloodtinge,
-          arcane: dayStats.arcane - prevDayStats.arcane,
+        // Only compute delta if both are the same game type
+        if (isBloodborneStats(dayStats) && isBloodborneStats(prevDayStats)) {
+          delta = {
+            level: dayStats.level - prevDayStats.level,
+            vitality: dayStats.vitality - prevDayStats.vitality,
+            endurance: dayStats.endurance - prevDayStats.endurance,
+            strength: dayStats.strength - prevDayStats.strength,
+            skill: dayStats.skill - prevDayStats.skill,
+            bloodtinge: dayStats.bloodtinge - prevDayStats.bloodtinge,
+            arcane: dayStats.arcane - prevDayStats.arcane,
+          }
+        } else if (isEldenRingStats(dayStats) && isEldenRingStats(prevDayStats)) {
+          delta = {
+            level: dayStats.level - prevDayStats.level,
+            vigor: dayStats.vigor - prevDayStats.vigor,
+            mind: dayStats.mind - prevDayStats.mind,
+            endurance: dayStats.endurance - prevDayStats.endurance,
+            strength: dayStats.strength - prevDayStats.strength,
+            dexterity: dayStats.dexterity - prevDayStats.dexterity,
+            intelligence: dayStats.intelligence - prevDayStats.intelligence,
+            faith: dayStats.faith - prevDayStats.faith,
+            arcane: dayStats.arcane - prevDayStats.arcane,
+          }
         }
       }
 
@@ -1375,7 +1391,17 @@ function App() {
             <motion.div key="normal-buttons" className="flex items-center gap-10" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
               <motion.button onClick={() => requireAuth(bossStart)} className="text-2xl tracking-[0.15em] uppercase" style={{ color: COLORS.coldGray }} whileHover={{ color: COLORS.boneWhite, scale: 1.05 }}>Boss</motion.button>
               <motion.button onClick={() => requireAuth(() => setShowMilestoneModal(true))} className="text-2xl tracking-[0.15em] uppercase" style={{ color: COLORS.ashGray }} whileHover={{ color: COLORS.coldGray, scale: 1.05 }}>Milestone</motion.button>
-              <motion.button onClick={() => requireAuth(() => { if (state.characterStats.length > 0) { const last = state.characterStats[state.characterStats.length - 1]; setStatsForm({ ...statsForm, level: last.level, vitality: last.vitality, endurance: last.endurance, strength: last.strength, skill: last.skill, bloodtinge: last.bloodtinge, arcane: last.arcane, bloodEchoes: last.bloodEchoes, insight: last.insight }) } setShowStatsModal(true) })} className="text-2xl tracking-[0.15em] uppercase" style={{ color: COLORS.fogGray }} whileHover={{ color: COLORS.ashGray, scale: 1.05 }}>Stats</motion.button>
+              <motion.button onClick={() => requireAuth(() => {
+                if (state.characterStats.length > 0) {
+                  const last = state.characterStats[state.characterStats.length - 1]
+                  if (isBloodborneStats(last)) {
+                    setStatsForm({ ...statsForm, level: last.level, vitality: last.vitality, endurance: last.endurance, strength: last.strength, skill: last.skill, bloodtinge: last.bloodtinge, arcane: last.arcane, bloodEchoes: last.bloodEchoes, insight: last.insight })
+                  } else if (isEldenRingStats(last)) {
+                    setEldenRingStatsForm({ ...eldenRingStatsForm, level: last.level, vigor: last.vigor, mind: last.mind, endurance: last.endurance, strength: last.strength, dexterity: last.dexterity, intelligence: last.intelligence, faith: last.faith, arcane: last.arcane, runes: last.runes })
+                  }
+                }
+                setShowStatsModal(true)
+              })} className="text-2xl tracking-[0.15em] uppercase" style={{ color: COLORS.fogGray }} whileHover={{ color: COLORS.ashGray, scale: 1.05 }}>Stats</motion.button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -2414,39 +2440,76 @@ function App() {
                           <div className="relative p-4 pl-5">
                             {editingStats === s.id ? (
                               <div className="space-y-3">
-                                {/* Stats grid for editing */}
-                                <div className="grid grid-cols-3 gap-2">
-                                  {[
-                                    { key: 'level', label: 'Level' },
-                                    { key: 'vitality', label: 'VIT' },
-                                    { key: 'endurance', label: 'END' },
-                                    { key: 'strength', label: 'STR' },
-                                    { key: 'skill', label: 'SKL' },
-                                    { key: 'bloodtinge', label: 'BLT' },
-                                    { key: 'arcane', label: 'ARC' },
-                                    { key: 'bloodEchoes', label: 'Echoes' },
-                                    { key: 'insight', label: 'Insight' }
-                                  ].map(({ key, label }) => (
-                                    <div key={key}>
-                                      <label className="text-[10px] uppercase tracking-wider mb-0.5 flex items-center gap-1" style={{ color: COLORS.fogGray }}>
-                                        <img src={STAT_ICONS[key]} alt={label} className="w-3 h-3" style={{ filter: 'brightness(0.7)' }} />
-                                        {label}
-                                      </label>
-                                      <input
-                                        type="number"
-                                        defaultValue={s[key as keyof CharacterStats] as number}
-                                        className="w-full px-1.5 py-1 text-center text-sm focus:outline-none"
-                                        style={{
-                                          fontFamily: "'Liberation Serif', serif",
-                                          backgroundColor: 'rgba(10, 10, 10, 0.8)',
-                                          color: key === 'level' ? COLORS.boneWhite : COLORS.coldGray,
-                                          border: `1px solid ${COLORS.fogGray}60`
-                                        }}
-                                        id={`edit-stats-${s.id}-${key}`}
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
+                                {/* Stats grid for editing - Bloodborne */}
+                                {isBloodborneStats(s) && (
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                      { key: 'level', label: 'Level' },
+                                      { key: 'vitality', label: 'VIT' },
+                                      { key: 'endurance', label: 'END' },
+                                      { key: 'strength', label: 'STR' },
+                                      { key: 'skill', label: 'SKL' },
+                                      { key: 'bloodtinge', label: 'BLT' },
+                                      { key: 'arcane', label: 'ARC' },
+                                      { key: 'bloodEchoes', label: 'Echoes' },
+                                      { key: 'insight', label: 'Insight' }
+                                    ].map(({ key, label }) => (
+                                      <div key={key}>
+                                        <label className="text-[10px] uppercase tracking-wider mb-0.5 flex items-center gap-1" style={{ color: COLORS.fogGray }}>
+                                          <img src={STAT_ICONS[key]} alt={label} className="w-3 h-3" style={{ filter: 'brightness(0.7)' }} />
+                                          {label}
+                                        </label>
+                                        <input
+                                          type="number"
+                                          defaultValue={s[key as keyof CharacterStats] as number}
+                                          className="w-full px-1.5 py-1 text-center text-sm focus:outline-none"
+                                          style={{
+                                            fontFamily: "'Liberation Serif', serif",
+                                            backgroundColor: 'rgba(10, 10, 10, 0.8)',
+                                            color: key === 'level' ? COLORS.boneWhite : COLORS.coldGray,
+                                            border: `1px solid ${COLORS.fogGray}60`
+                                          }}
+                                          id={`edit-stats-${s.id}-${key}`}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {/* Stats grid for editing - Elden Ring */}
+                                {isEldenRingStats(s) && (
+                                  <div className="grid grid-cols-5 gap-2">
+                                    {[
+                                      { key: 'level', label: 'Level' },
+                                      { key: 'vigor', label: 'VIG' },
+                                      { key: 'mind', label: 'MND' },
+                                      { key: 'endurance', label: 'END' },
+                                      { key: 'strength', label: 'STR' },
+                                      { key: 'dexterity', label: 'DEX' },
+                                      { key: 'intelligence', label: 'INT' },
+                                      { key: 'faith', label: 'FTH' },
+                                      { key: 'arcane', label: 'ARC' },
+                                      { key: 'runes', label: 'Runes' }
+                                    ].map(({ key, label }) => (
+                                      <div key={key} className={key === 'runes' ? 'col-span-5' : ''}>
+                                        <label className="text-[10px] uppercase tracking-wider mb-0.5 flex items-center gap-1" style={{ color: '#5E6A6F' }}>
+                                          {label}
+                                        </label>
+                                        <input
+                                          type="number"
+                                          defaultValue={s[key as keyof EldenRingCharacterStats] as number}
+                                          className="w-full px-1.5 py-1 text-center text-sm focus:outline-none"
+                                          style={{
+                                            fontFamily: "'Liberation Serif', serif",
+                                            backgroundColor: 'rgba(10, 10, 10, 0.8)',
+                                            color: key === 'level' ? '#C9A24D' : '#D6D1C4',
+                                            border: '1px solid #5E6A6F60'
+                                          }}
+                                          id={`edit-stats-${s.id}-${key}`}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
 
                                 {/* Notes */}
                                 <textarea
@@ -2526,17 +2589,33 @@ function App() {
                                   </span>
                                 </div>
 
-                                {/* Stats grid */}
-                                <div className="grid grid-cols-4 gap-x-3 gap-y-1 text-sm mb-2">
-                                  <div className="flex items-center gap-1"><img src={STAT_ICONS.vitality} alt="VIT" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.vitality}</span></div>
-                                  <div className="flex items-center gap-1"><img src={STAT_ICONS.endurance} alt="END" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.endurance}</span></div>
-                                  <div className="flex items-center gap-1"><img src={STAT_ICONS.strength} alt="STR" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.strength}</span></div>
-                                  <div className="flex items-center gap-1"><img src={STAT_ICONS.skill} alt="SKL" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.skill}</span></div>
-                                  <div className="flex items-center gap-1"><img src={STAT_ICONS.bloodtinge} alt="BLT" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.bloodtinge}</span></div>
-                                  <div className="flex items-center gap-1"><img src={STAT_ICONS.arcane} alt="ARC" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.arcane}</span></div>
-                                  <div className="flex items-center gap-1"><img src={STAT_ICONS.bloodEchoes} alt="Echoes" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.bloodEchoes > 1000 ? `${Math.floor(s.bloodEchoes / 1000)}k` : s.bloodEchoes}</span></div>
-                                  <div className="flex items-center gap-1"><img src={STAT_ICONS.insight} alt="Insight" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.insight}</span></div>
-                                </div>
+                                {/* Stats grid - Bloodborne */}
+                                {isBloodborneStats(s) && (
+                                  <div className="grid grid-cols-4 gap-x-3 gap-y-1 text-sm mb-2">
+                                    <div className="flex items-center gap-1"><img src={STAT_ICONS.vitality} alt="VIT" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.vitality}</span></div>
+                                    <div className="flex items-center gap-1"><img src={STAT_ICONS.endurance} alt="END" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.endurance}</span></div>
+                                    <div className="flex items-center gap-1"><img src={STAT_ICONS.strength} alt="STR" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.strength}</span></div>
+                                    <div className="flex items-center gap-1"><img src={STAT_ICONS.skill} alt="SKL" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.skill}</span></div>
+                                    <div className="flex items-center gap-1"><img src={STAT_ICONS.bloodtinge} alt="BLT" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.bloodtinge}</span></div>
+                                    <div className="flex items-center gap-1"><img src={STAT_ICONS.arcane} alt="ARC" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.arcane}</span></div>
+                                    <div className="flex items-center gap-1"><img src={STAT_ICONS.bloodEchoes} alt="Echoes" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.bloodEchoes > 1000 ? `${Math.floor(s.bloodEchoes / 1000)}k` : s.bloodEchoes}</span></div>
+                                    <div className="flex items-center gap-1"><img src={STAT_ICONS.insight} alt="Insight" className="w-3.5 h-3.5" style={{ filter: 'brightness(0.7)' }} /> <span style={{ color: COLORS.coldGray }}>{s.insight}</span></div>
+                                  </div>
+                                )}
+                                {/* Stats grid - Elden Ring */}
+                                {isEldenRingStats(s) && (
+                                  <div className="grid grid-cols-5 gap-x-2 gap-y-1 text-sm mb-2">
+                                    <div className="flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>VIG</span> <span style={{ color: '#D6D1C4' }}>{s.vigor}</span></div>
+                                    <div className="flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>MND</span> <span style={{ color: '#D6D1C4' }}>{s.mind}</span></div>
+                                    <div className="flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>END</span> <span style={{ color: '#D6D1C4' }}>{s.endurance}</span></div>
+                                    <div className="flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>STR</span> <span style={{ color: '#D6D1C4' }}>{s.strength}</span></div>
+                                    <div className="flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>DEX</span> <span style={{ color: '#D6D1C4' }}>{s.dexterity}</span></div>
+                                    <div className="flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>INT</span> <span style={{ color: '#D6D1C4' }}>{s.intelligence}</span></div>
+                                    <div className="flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>FTH</span> <span style={{ color: '#D6D1C4' }}>{s.faith}</span></div>
+                                    <div className="flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>ARC</span> <span style={{ color: '#D6D1C4' }}>{s.arcane}</span></div>
+                                    <div className="col-span-2 flex items-center gap-1"><span style={{ color: '#5E6A6F' }}>Runes</span> <span style={{ color: '#C9A24D' }}>{s.runes > 1000 ? `${Math.floor(s.runes / 1000)}k` : s.runes}</span></div>
+                                  </div>
+                                )}
 
                                 {s.notes && (
                                   <div className="text-xs italic mb-2" style={{ color: COLORS.fogGray }}>
@@ -2741,29 +2820,61 @@ function App() {
                             <span style={{ color: COLORS.bloodRed }}>☠ {day.deaths}</span>
                           </div>
 
-                          {/* Stats with deltas */}
-                          {day.stats && (
+                          {/* Stats with deltas - Bloodborne */}
+                          {day.stats && isBloodborneStats(day.stats) && (
                             <div className="text-xs grid grid-cols-4 gap-1 mb-2" style={{ color: COLORS.fogGray }}>
                               <span>LVL <span style={{ color: COLORS.boneWhite }}>{day.stats.level}</span>
-                                {day.statsDelta?.level ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.level}</span> : null}
+                                {day.statsDelta && isBloodborneStatsDelta(day.statsDelta) && day.statsDelta.level ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.level}</span> : null}
                               </span>
                               <span>VIT {day.stats.vitality}
-                                {day.statsDelta?.vitality ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.vitality}</span> : null}
+                                {day.statsDelta && isBloodborneStatsDelta(day.statsDelta) && day.statsDelta.vitality ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.vitality}</span> : null}
                               </span>
                               <span>END {day.stats.endurance}
-                                {day.statsDelta?.endurance ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.endurance}</span> : null}
+                                {day.statsDelta && isBloodborneStatsDelta(day.statsDelta) && day.statsDelta.endurance ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.endurance}</span> : null}
                               </span>
                               <span>STR {day.stats.strength}
-                                {day.statsDelta?.strength ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.strength}</span> : null}
+                                {day.statsDelta && isBloodborneStatsDelta(day.statsDelta) && day.statsDelta.strength ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.strength}</span> : null}
                               </span>
                               <span>SKL {day.stats.skill}
-                                {day.statsDelta?.skill ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.skill}</span> : null}
+                                {day.statsDelta && isBloodborneStatsDelta(day.statsDelta) && day.statsDelta.skill ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.skill}</span> : null}
                               </span>
                               <span>BLT {day.stats.bloodtinge}
-                                {day.statsDelta?.bloodtinge ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.bloodtinge}</span> : null}
+                                {day.statsDelta && isBloodborneStatsDelta(day.statsDelta) && day.statsDelta.bloodtinge ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.bloodtinge}</span> : null}
                               </span>
                               <span>ARC {day.stats.arcane}
-                                {day.statsDelta?.arcane ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.arcane}</span> : null}
+                                {day.statsDelta && isBloodborneStatsDelta(day.statsDelta) && day.statsDelta.arcane ? <span style={{ color: COLORS.bossAmber }}> +{day.statsDelta.arcane}</span> : null}
+                              </span>
+                            </div>
+                          )}
+                          {/* Stats with deltas - Elden Ring */}
+                          {day.stats && isEldenRingStats(day.stats) && (
+                            <div className="text-xs grid grid-cols-5 gap-1 mb-2" style={{ color: '#5E6A6F' }}>
+                              <span>LVL <span style={{ color: '#C9A24D' }}>{day.stats.level}</span>
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.level ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.level}</span> : null}
+                              </span>
+                              <span>VIG {day.stats.vigor}
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.vigor ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.vigor}</span> : null}
+                              </span>
+                              <span>MND {day.stats.mind}
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.mind ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.mind}</span> : null}
+                              </span>
+                              <span>END {day.stats.endurance}
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.endurance ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.endurance}</span> : null}
+                              </span>
+                              <span>STR {day.stats.strength}
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.strength ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.strength}</span> : null}
+                              </span>
+                              <span>DEX {day.stats.dexterity}
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.dexterity ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.dexterity}</span> : null}
+                              </span>
+                              <span>INT {day.stats.intelligence}
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.intelligence ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.intelligence}</span> : null}
+                              </span>
+                              <span>FTH {day.stats.faith}
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.faith ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.faith}</span> : null}
+                              </span>
+                              <span>ARC {day.stats.arcane}
+                                {day.statsDelta && isEldenRingStatsDelta(day.statsDelta) && day.statsDelta.arcane ? <span style={{ color: '#C9A24D' }}> +{day.statsDelta.arcane}</span> : null}
                               </span>
                             </div>
                           )}
@@ -3037,21 +3148,37 @@ function App() {
 
                 {/* Stats popup */}
                 {selectedTimelinePoint.type === 'stats' && (() => {
-                  const stats = selectedTimelinePoint.data as CharacterStats
+                  const stats = selectedTimelinePoint.data as GameCharacterStats
                   return (
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <img src={STAT_ICONS.level} alt="" className="w-4 h-4" />
-                        <span style={{ color: COLORS.boneWhite }}>Level {stats.level}</span>
+                        <span style={{ color: isEldenRingStats(stats) ? '#C9A24D' : COLORS.boneWhite }}>Level {stats.level}</span>
                       </div>
-                      <div className="text-xs grid grid-cols-3 gap-1" style={{ color: COLORS.coldGray }}>
-                        <span>VIT {stats.vitality}</span>
-                        <span>END {stats.endurance}</span>
-                        <span>STR {stats.strength}</span>
-                        <span>SKL {stats.skill}</span>
-                        <span>BLT {stats.bloodtinge}</span>
-                        <span>ARC {stats.arcane}</span>
-                      </div>
+                      {/* Bloodborne stats */}
+                      {isBloodborneStats(stats) && (
+                        <div className="text-xs grid grid-cols-3 gap-1" style={{ color: COLORS.coldGray }}>
+                          <span>VIT {stats.vitality}</span>
+                          <span>END {stats.endurance}</span>
+                          <span>STR {stats.strength}</span>
+                          <span>SKL {stats.skill}</span>
+                          <span>BLT {stats.bloodtinge}</span>
+                          <span>ARC {stats.arcane}</span>
+                        </div>
+                      )}
+                      {/* Elden Ring stats */}
+                      {isEldenRingStats(stats) && (
+                        <div className="text-xs grid grid-cols-3 gap-1" style={{ color: '#D6D1C4' }}>
+                          <span>VIG {stats.vigor}</span>
+                          <span>MND {stats.mind}</span>
+                          <span>END {stats.endurance}</span>
+                          <span>STR {stats.strength}</span>
+                          <span>DEX {stats.dexterity}</span>
+                          <span>INT {stats.intelligence}</span>
+                          <span>FTH {stats.faith}</span>
+                          <span>ARC {stats.arcane}</span>
+                        </div>
+                      )}
                       <div className="text-xs mt-1" style={{ color: COLORS.fogGray }}>
                         @ {formatTime(stats.timestamp)}
                       </div>
