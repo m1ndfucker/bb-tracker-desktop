@@ -1,9 +1,13 @@
 // bb-tracker-desktop/src/components/ProfileList.tsx
 // Profile selection page - matches web version BloodborneProfileList.tsx
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { COLORS, formatTime } from '../lib/constants'
+import { PresetSlug } from '../lib/types'
+import { getSelectablePresets } from '../lib/presetUtils'
+import { usePresets } from '../hooks/usePresets'
+import { AdminCodeInput, AdminPanel } from './admin'
 
 interface Profile {
   name: string
@@ -16,7 +20,7 @@ interface Profile {
 }
 
 interface ProfileListProps {
-  onSelectProfile: (profileName: string, password?: string) => void
+  onSelectProfile: (profileName: string, password?: string, initialPreset?: PresetSlug) => void
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -48,10 +52,23 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
   const [newDisplayName, setNewDisplayName] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [isPrivate, setIsPrivate] = useState(false)
+  const [selectedPreset, setSelectedPreset] = useState<PresetSlug>('bloodborne')
   const [nameAvailable, setNameAvailable] = useState<boolean | null>(null)
   const [checkingName, setCheckingName] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
+
+  // Admin state
+  const [showAdminCode, setShowAdminCode] = useState(false)
+  const [showAdminPanel, setShowAdminPanel] = useState(false)
+  const [adminToken, setAdminToken] = useState<string | null>(null)
+  const titleClickCountRef = useRef(0)
+  const titleClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Presets hook
+  const { presets, refresh: refreshPresets } = usePresets()
+
+  const selectablePresets = getSelectablePresets()
 
   // Load profiles
   const loadProfiles = useCallback(async () => {
@@ -167,9 +184,9 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
         // Refresh profiles
         await loadProfiles()
 
-        // Reset modal and navigate to profile
+        // Reset modal and navigate to profile with initial preset
         setShowCreateModal(false)
-        onSelectProfile(profileName, newPassword)
+        onSelectProfile(profileName, newPassword, selectedPreset)
       } else {
         setCreateError(data.error || 'Failed to create profile')
       }
@@ -178,7 +195,7 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
     } finally {
       setCreating(false)
     }
-  }, [newName, newDisplayName, newPassword, nameAvailable, isPrivate, loadProfiles, onSelectProfile])
+  }, [newName, newDisplayName, newPassword, nameAvailable, isPrivate, selectedPreset, loadProfiles, onSelectProfile])
 
   return (
     <div
@@ -210,7 +227,7 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
         transition={{ duration: 0.8, ease: 'easeOut' }}
       >
         <motion.h1
-          className="text-4xl sm:text-5xl tracking-[0.15em] uppercase"
+          className="text-4xl sm:text-5xl tracking-[0.15em] uppercase cursor-default select-none"
           style={{
             color: COLORS.boneWhite,
             textShadow: `0 0 40px ${COLORS.bloodRedGlow}40, 0 4px 8px ${COLORS.nearBlack}`
@@ -218,6 +235,21 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
           initial={{ y: -30, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ type: 'spring', damping: 20 }}
+          onClick={() => {
+            // Hidden admin trigger: 5 clicks on title
+            titleClickCountRef.current++
+            if (titleClickTimerRef.current) {
+              clearTimeout(titleClickTimerRef.current)
+            }
+            if (titleClickCountRef.current >= 5) {
+              titleClickCountRef.current = 0
+              setShowAdminCode(true)
+            } else {
+              titleClickTimerRef.current = setTimeout(() => {
+                titleClickCountRef.current = 0
+              }, 2000) // Reset counter after 2 seconds
+            }
+          }}
         >
           Bloodborne
         </motion.h1>
@@ -471,57 +503,35 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
       <AnimatePresence>
         {showCreateModal && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.85)' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            onClick={() => setShowCreateModal(false)}
           >
-            {/* Backdrop */}
-            <motion.div
-              className="absolute inset-0 bg-black/85"
-              onClick={() => setShowCreateModal(false)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            />
-
             {/* Modal */}
             <motion.div
-              className="relative w-full max-w-md overflow-hidden"
-              style={{
-                background: 'linear-gradient(135deg, rgba(50, 40, 40, 0.95) 0%, rgba(20, 15, 15, 0.98) 100%)',
-                border: `1px solid ${COLORS.bloodRedDark}40`,
-                boxShadow: `0 0 60px ${COLORS.bloodRedGlow}30`
-              }}
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              transition={{ type: 'spring', damping: 25 }}
+              className="p-8 max-w-md w-full mx-4"
+              style={{ backgroundColor: COLORS.nearBlack, border: `1px solid ${COLORS.bloodRed}` }}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
               onClick={e => e.stopPropagation()}
             >
-              {/* Left accent bar */}
-              <div
-                className="absolute left-0 top-0 bottom-0 w-1"
-                style={{ background: `linear-gradient(180deg, ${COLORS.bloodRed}, ${COLORS.bloodRedDark})` }}
-              />
+              <h2
+                className="text-xl tracking-[0.15em] uppercase mb-6 text-center"
+                style={{ color: COLORS.bloodRed, fontFamily: "'Times New Roman', serif" }}
+              >
+                New Hunter
+              </h2>
 
-              <div className="p-6 sm:p-8 pl-7 sm:pl-9">
-                <h2
-                  className="text-xl sm:text-2xl tracking-[0.1em] uppercase mb-6"
-                  style={{
-                    color: COLORS.boneWhite,
-                    textShadow: `0 0 20px ${COLORS.bloodRedGlow}40`
-                  }}
-                >
-                  New Hunter
-                </h2>
-
-                <div className="space-y-4">
+              <div className="space-y-4">
                   {/* URL Name */}
                   <div>
                     <label
                       className="block text-xs tracking-[0.15em] uppercase mb-2"
-                      style={{ color: COLORS.ashGray }}
+                      style={{ color: COLORS.ashGray, fontFamily: "'Times New Roman', serif" }}
                     >
                       Profile Name (for URL)
                     </label>
@@ -530,10 +540,11 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                       value={newName}
                       onChange={e => setNewName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
                       placeholder="hunter"
-                      className="w-full px-3 py-2 outline-none text-base tracking-wider backdrop-blur-sm"
+                      className="w-full px-3 py-2 focus:outline-none text-base tracking-wider"
                       style={{
-                        backgroundColor: 'rgba(10, 10, 10, 0.6)',
+                        backgroundColor: COLORS.nearBlack,
                         color: COLORS.boneWhite,
+                        fontFamily: "'Times New Roman', serif",
                         border: `1px solid ${
                           nameAvailable === false ? COLORS.bloodRed :
                           nameAvailable === true ? COLORS.bossAmber :
@@ -541,7 +552,7 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                         }40`
                       }}
                     />
-                    <div className="mt-1 text-xs" style={{ color: COLORS.fogGray }}>
+                    <div className="mt-1 text-xs" style={{ color: COLORS.fogGray, fontFamily: "'Times New Roman', serif" }}>
                       watch.home.kg/bloodborne/{newName || 'hunter'}
                       {checkingName && <span className="ml-2">checking...</span>}
                       {!checkingName && nameAvailable === true && (
@@ -557,7 +568,7 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                   <div>
                     <label
                       className="block text-xs tracking-[0.15em] uppercase mb-2"
-                      style={{ color: COLORS.ashGray }}
+                      style={{ color: COLORS.ashGray, fontFamily: "'Times New Roman', serif" }}
                     >
                       Display Name
                     </label>
@@ -566,10 +577,11 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                       value={newDisplayName}
                       onChange={e => setNewDisplayName(e.target.value)}
                       placeholder={newName || 'Hunter'}
-                      className="w-full px-3 py-2 outline-none text-base tracking-wider backdrop-blur-sm"
+                      className="w-full px-3 py-2 focus:outline-none text-base tracking-wider"
                       style={{
-                        backgroundColor: 'rgba(10, 10, 10, 0.6)',
+                        backgroundColor: COLORS.nearBlack,
                         color: COLORS.boneWhite,
+                        fontFamily: "'Times New Roman', serif",
                         border: `1px solid ${COLORS.fogGray}40`
                       }}
                     />
@@ -579,7 +591,7 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                   <div>
                     <label
                       className="block text-xs tracking-[0.15em] uppercase mb-2"
-                      style={{ color: COLORS.ashGray }}
+                      style={{ color: COLORS.ashGray, fontFamily: "'Times New Roman', serif" }}
                     >
                       Password (for editing)
                     </label>
@@ -588,19 +600,70 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                       value={newPassword}
                       onChange={e => setNewPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full px-3 py-2 outline-none text-base tracking-wider backdrop-blur-sm"
+                      className="w-full px-3 py-2 focus:outline-none text-base tracking-wider"
                       style={{
-                        backgroundColor: 'rgba(10, 10, 10, 0.6)',
+                        backgroundColor: COLORS.nearBlack,
                         color: COLORS.boneWhite,
+                        fontFamily: "'Times New Roman', serif",
                         border: `1px solid ${COLORS.fogGray}40`
                       }}
                     />
                     <p
                       className="mt-2 text-xs flex items-center gap-1"
-                      style={{ color: COLORS.bloodRedDark }}
+                      style={{ color: COLORS.bloodRedDark, fontFamily: "'Times New Roman', serif" }}
                     >
                       <span>!</span> Remember your password - cannot be recovered
                     </p>
+                  </div>
+
+                  {/* Theme Selection */}
+                  <div>
+                    <label
+                      className="block text-xs tracking-[0.15em] uppercase mb-2"
+                      style={{ color: COLORS.ashGray, fontFamily: "'Times New Roman', serif" }}
+                    >
+                      Theme
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {selectablePresets.map((preset) => (
+                        <motion.button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setSelectedPreset(preset.slug)}
+                          className="p-3 text-left"
+                          style={{
+                            background: selectedPreset === preset.slug
+                              ? `linear-gradient(135deg, ${preset.config.colors.cardBg}, ${preset.config.colors.background})`
+                              : `linear-gradient(135deg, rgba(30, 35, 33, 0.4), rgba(15, 18, 17, 0.6))`,
+                            border: `1px solid ${selectedPreset === preset.slug
+                              ? preset.config.colors.accent
+                              : COLORS.fogGray}40`
+                          }}
+                          whileHover={{ borderColor: preset.config.colors.accent }}
+                        >
+                          <div
+                            className="text-sm tracking-wider mb-1"
+                            style={{ color: preset.config.colors.primary, fontFamily: "'Times New Roman', serif" }}
+                          >
+                            {preset.displayName}
+                          </div>
+                          <div className="flex gap-1">
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: preset.config.colors.primary }}
+                            />
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: preset.config.colors.accent }}
+                            />
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: preset.config.colors.secondary }}
+                            />
+                          </div>
+                        </motion.button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Private Profile checkbox */}
@@ -615,14 +678,14 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                       />
                       <span
                         className="text-sm tracking-wider"
-                        style={{ color: COLORS.coldGray }}
+                        style={{ color: COLORS.coldGray, fontFamily: "'Times New Roman', serif" }}
                       >
                         Hide from public list
                       </span>
                     </label>
                     <p
                       className="mt-1 text-xs pl-7"
-                      style={{ color: COLORS.fogGray }}
+                      style={{ color: COLORS.fogGray, fontFamily: "'Times New Roman', serif" }}
                     >
                       Profile will only be accessible via direct link
                     </p>
@@ -632,14 +695,14 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                   {createError && (
                     <p
                       className="text-sm text-center py-2"
-                      style={{ color: COLORS.bloodRed }}
+                      style={{ color: COLORS.bloodRed, fontFamily: "'Times New Roman', serif" }}
                     >
                       {createError}
                     </p>
                   )}
 
                   {/* Buttons */}
-                  <div className="flex gap-3 pt-3">
+                  <div className="flex gap-6 justify-center pt-4">
                     <motion.button
                       onClick={() => {
                         setShowCreateModal(false)
@@ -647,38 +710,55 @@ export function ProfileList({ onSelectProfile }: ProfileListProps) {
                         setNewDisplayName('')
                         setNewPassword('')
                         setIsPrivate(false)
+                        setSelectedPreset('bloodborne')
                         setCreateError('')
                       }}
-                      className="flex-1 py-2.5 text-xs tracking-[0.15em] uppercase"
-                      style={{
-                        color: COLORS.coldGray,
-                        border: `1px solid ${COLORS.fogGray}40`
-                      }}
-                      whileHover={{ borderColor: `${COLORS.coldGray}80` }}
+                      className="tracking-wider"
+                      style={{ color: COLORS.ashGray, fontFamily: "'Times New Roman', serif" }}
+                      whileHover={{ color: COLORS.coldGray }}
                     >
                       Cancel
                     </motion.button>
                     <motion.button
                       onClick={handleCreate}
                       disabled={!newName.trim() || !newPassword.trim() || !nameAvailable || creating}
-                      className="flex-1 py-2.5 text-xs tracking-[0.15em] uppercase disabled:opacity-30 disabled:cursor-not-allowed"
-                      style={{
-                        background: `linear-gradient(180deg, ${COLORS.bloodRed}, ${COLORS.bloodRedDark})`,
-                        color: COLORS.boneWhite
-                      }}
-                      whileHover={
-                        newName.trim() && newPassword.trim() && nameAvailable && !creating
-                          ? { boxShadow: `0 0 20px ${COLORS.bloodRed}40` }
-                          : {}
-                      }
+                      className="tracking-wider disabled:opacity-30 disabled:cursor-not-allowed"
+                      style={{ color: COLORS.bloodRed, fontFamily: "'Times New Roman', serif" }}
+                      whileHover={{ color: COLORS.boneWhite }}
                     >
                       {creating ? 'Creating...' : 'Create'}
                     </motion.button>
                   </div>
                 </div>
-              </div>
             </motion.div>
           </motion.div>
+        )}
+
+        {/* Admin Code Input Modal */}
+        {showAdminCode && (
+          <AdminCodeInput
+            onSuccess={(token) => {
+              setAdminToken(token)
+              setShowAdminCode(false)
+              setShowAdminPanel(true)
+            }}
+            onClose={() => setShowAdminCode(false)}
+          />
+        )}
+
+        {/* Admin Panel Modal */}
+        {showAdminPanel && adminToken && (
+          <AdminPanel
+            presets={presets}
+            adminToken={adminToken}
+            onClose={() => {
+              setShowAdminPanel(false)
+              setAdminToken(null)
+            }}
+            onPresetUpdated={() => {
+              refreshPresets()
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

@@ -86,6 +86,10 @@ export function useWebSocket({
             milestones: msg.milestones || [],
             characterStats: msg.characterStats || [],
             overlayToken: msg.overlayToken,
+            // Visual configuration (NEW + LEGACY)
+            presetId: msg.presetId || null,
+            presetSlug: msg.presetSlug || null,
+            profileSettings: msg.profileSettings || null,
           }
           setState(newState)
           onStateUpdateRef.current?.(newState)

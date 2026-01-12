@@ -97,13 +97,25 @@ body {
   scroll-behavior: smooth;
 }
 
-/* Ensure p-4 renders as 16px in WebView */
+/* Ensure padding renders correctly in WebView */
 .p-4 {
   padding: 16px !important;
 }
 
+.p-6 {
+  padding: 24px !important;
+}
+
+.p-8 {
+  padding: 32px !important;
+}
+
 .pl-5 {
   padding-left: 20px !important;
+}
+
+.pl-8 {
+  padding-left: 32px !important;
 }
 
 .p-2 {
@@ -151,8 +163,20 @@ body {
   margin-bottom: 16px !important;
 }
 
+.mb-6 {
+  margin-bottom: 24px !important;
+}
+
+.mt-1 {
+  margin-top: 4px !important;
+}
+
 .mt-2 {
   margin-top: 8px !important;
+}
+
+.mt-4 {
+  margin-top: 16px !important;
 }
 
 .mt-3 {
@@ -165,6 +189,19 @@ body {
 
 .pt-3 {
   padding-top: 12px !important;
+}
+
+.pt-4 {
+  padding-top: 16px !important;
+}
+
+.py-2 {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+
+.space-y-4 > * + * {
+  margin-top: 16px !important;
 }
 
 /* Text sizing for WebView */
@@ -223,6 +260,26 @@ body {
 /* Flex fixes */
 .flex-1 {
   flex: 1 1 0% !important;
+}
+
+/* Max width fixes */
+.max-w-md {
+  max-width: 28rem !important;
+}
+
+.max-w-sm {
+  max-width: 24rem !important;
+}
+
+/* Margin horizontal */
+.mx-4 {
+  margin-left: 16px !important;
+  margin-right: 16px !important;
+}
+
+/* Width fixes */
+.w-full {
+  width: 100% !important;
 }
 
 /* Border fixes */

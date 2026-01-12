@@ -8,9 +8,11 @@ interface TimerProps {
   isRunning: boolean
   onClick?: () => void
   canEdit?: boolean
+  colors?: { primary: string }
 }
 
-export function Timer({ elapsed, isRunning, onClick, canEdit }: TimerProps) {
+export function Timer({ elapsed, isRunning, onClick, canEdit, colors }: TimerProps) {
+  const primaryColor = colors?.primary ?? COLORS.boneWhite
   const [displayTime, setDisplayTime] = useState(elapsed)
   const startTimeRef = useRef(Date.now())
   const serverElapsedRef = useRef(elapsed)
@@ -44,15 +46,15 @@ export function Timer({ elapsed, isRunning, onClick, canEdit }: TimerProps) {
     >
       <span
         className="text-2xl transition-transform group-hover:scale-110 group-disabled:group-hover:scale-100"
-        style={{ color: isRunning ? COLORS.boneWhite : COLORS.fogGray }}
+        style={{ color: isRunning ? primaryColor : COLORS.fogGray }}
       >
         {isRunning ? '||' : '\u25B6'}
       </span>
       <span
         className="text-4xl font-bold tracking-wider tabular-nums"
         style={{
-          color: COLORS.boneWhite,
-          textShadow: isRunning ? '0 0 20px rgba(240, 236, 228, 0.3)' : 'none'
+          color: primaryColor,
+          textShadow: isRunning ? `0 0 20px ${primaryColor}4D` : 'none'
         }}
       >
         {formatTime(displayTime)}

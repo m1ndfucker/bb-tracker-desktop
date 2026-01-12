@@ -4,7 +4,7 @@ import { Timer } from './Timer'
 import { DeathCounter } from './DeathCounter'
 import { BossButton } from './BossButton'
 import { COLORS } from '../lib/constants'
-import { ProfileState } from '../lib/types'
+import { ProfileState, ProfileColors } from '../lib/types'
 
 interface CompactViewProps {
   state: ProfileState
@@ -16,6 +16,7 @@ interface CompactViewProps {
   onBossPause: () => void
   onBossResume: () => void
   onBossCancel: () => void
+  themeColors?: ProfileColors
 }
 
 export function CompactView({
@@ -28,7 +29,17 @@ export function CompactView({
   onBossPause,
   onBossResume,
   onBossCancel,
+  themeColors,
 }: CompactViewProps) {
+  // Theme colors with fallbacks
+  const colors = {
+    primary: themeColors?.primary ?? COLORS.boneWhite,
+    accent: themeColors?.accent ?? COLORS.bloodRed,
+    secondary: themeColors?.secondary ?? COLORS.bossAmber,
+    background: themeColors?.background ?? COLORS.nearBlack,
+    cardBg: themeColors?.cardBg ?? '#1a1a1a',
+  }
+
   const handleTimerToggle = () => {
     if (state.isRunning) {
       onStop()
@@ -41,7 +52,7 @@ export function CompactView({
     <div
       className="min-h-screen flex flex-col select-none"
       style={{
-        backgroundColor: COLORS.nearBlack,
+        backgroundColor: colors.background,
         fontFamily: "'Liberation Serif', Georgia, serif",
       }}
     >
@@ -65,9 +76,9 @@ export function CompactView({
             <span
               className="text-xs px-2 py-0.5 rounded"
               style={{
-                backgroundColor: `${COLORS.bossAmber}20`,
-                color: COLORS.bossAmber,
-                border: `1px solid ${COLORS.bossAmber}40`,
+                backgroundColor: `${colors.secondary}20`,
+                color: colors.secondary,
+                border: `1px solid ${colors.secondary}40`,
               }}
             >
               BOSS
@@ -88,6 +99,7 @@ export function CompactView({
           isRunning={state.isRunning}
           onClick={handleTimerToggle}
           canEdit={state.canEdit}
+          colors={{ primary: colors.primary }}
         />
 
         {/* Death Counter */}
@@ -97,6 +109,11 @@ export function CompactView({
           bossFightMode={state.bossFightMode}
           onClick={onDeath}
           canEdit={state.canEdit}
+          colors={{
+            primary: colors.primary,
+            accent: colors.accent,
+            secondary: colors.secondary,
+          }}
         />
       </div>
 
@@ -108,13 +125,13 @@ export function CompactView({
           disabled={!state.canEdit}
           className="w-full py-4 text-xl tracking-[0.3em] uppercase font-bold transition-all duration-200 disabled:opacity-50 btn-death"
           style={{
-            backgroundColor: state.bossFightMode ? 'transparent' : COLORS.bloodRedDark,
-            border: `2px solid ${state.bossFightMode ? COLORS.boneWhite : COLORS.bloodRed}`,
-            color: state.bossFightMode ? COLORS.boneWhite : COLORS.boneWhite,
+            backgroundColor: state.bossFightMode ? 'transparent' : `${colors.accent}CC`,
+            border: `2px solid ${state.bossFightMode ? colors.primary : colors.accent}`,
+            color: colors.primary,
             fontFamily: "'Liberation Serif', Georgia, serif",
             boxShadow: state.bossFightMode
-              ? `0 0 20px rgba(240, 236, 228, 0.2)`
-              : '0 0 20px rgba(196, 48, 48, 0.3)',
+              ? `0 0 20px ${colors.primary}33`
+              : `0 0 20px ${colors.accent}4D`,
           }}
         >
           YOU DIED
@@ -129,6 +146,10 @@ export function CompactView({
           onResume={onBossResume}
           onCancel={onBossCancel}
           canEdit={state.canEdit}
+          colors={{
+            primary: colors.primary,
+            secondary: colors.secondary,
+          }}
         />
       </div>
     </div>

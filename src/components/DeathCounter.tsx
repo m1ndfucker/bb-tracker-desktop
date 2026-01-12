@@ -9,6 +9,11 @@ interface DeathCounterProps {
   bossFightMode?: boolean
   onClick?: () => void
   canEdit?: boolean
+  colors?: {
+    primary: string
+    accent: string
+    secondary: string
+  }
 }
 
 export function DeathCounter({
@@ -16,10 +21,16 @@ export function DeathCounter({
   bossDeaths = 0,
   bossFightMode = false,
   onClick,
-  canEdit
+  canEdit,
+  colors
 }: DeathCounterProps) {
   const [flash, setFlash] = useState(false)
   const [prevDeaths, setPrevDeaths] = useState(deaths)
+
+  // Theme colors with fallbacks
+  const primaryColor = colors?.primary ?? COLORS.boneWhite
+  const accentColor = colors?.accent ?? COLORS.bloodRed
+  const secondaryColor = colors?.secondary ?? COLORS.bossAmber
 
   useEffect(() => {
     // Flash on death increase (either total or boss deaths)
@@ -33,7 +44,8 @@ export function DeathCounter({
   }, [deaths, bossDeaths, bossFightMode])
 
   const displayCount = bossFightMode ? bossDeaths : deaths
-  const color = bossFightMode ? COLORS.boneWhite : COLORS.bloodRed
+  const color = bossFightMode ? primaryColor : accentColor
+  const borderColor = bossFightMode ? secondaryColor : accentColor
 
   return (
     <button
@@ -42,16 +54,16 @@ export function DeathCounter({
       className="group relative px-6 py-3 rounded transition-all duration-200 disabled:cursor-default"
       style={{
         backgroundColor: flash
-          ? `rgba(196, 48, 48, 0.3)`
+          ? `${accentColor}4D`
           : bossFightMode
-            ? 'rgba(143, 186, 168, 0.1)'
-            : 'rgba(196, 48, 48, 0.1)',
-        border: `2px solid ${bossFightMode ? COLORS.bossAmber : COLORS.bloodRed}`,
+            ? `${secondaryColor}1A`
+            : `${accentColor}1A`,
+        border: `2px solid ${borderColor}`,
         boxShadow: flash
-          ? '0 0 30px rgba(196, 48, 48, 0.5), inset 0 0 20px rgba(196, 48, 48, 0.2)'
+          ? `0 0 30px ${accentColor}80, inset 0 0 20px ${accentColor}33`
           : bossFightMode
-            ? '0 0 15px rgba(143, 186, 168, 0.2)'
-            : '0 0 15px rgba(196, 48, 48, 0.2)',
+            ? `0 0 15px ${secondaryColor}33`
+            : `0 0 15px ${accentColor}33`,
         fontFamily: "'Liberation Serif', Georgia, serif",
       }}
     >
@@ -60,7 +72,7 @@ export function DeathCounter({
           className="text-5xl font-bold tracking-wider transition-transform"
           style={{
             color,
-            textShadow: `0 0 20px ${bossFightMode ? 'rgba(143, 186, 168, 0.5)' : 'rgba(196, 48, 48, 0.5)'}`,
+            textShadow: `0 0 20px ${bossFightMode ? `${secondaryColor}80` : `${accentColor}80`}`,
             transform: flash ? 'scale(1.1)' : 'scale(1)',
           }}
         >
@@ -68,7 +80,7 @@ export function DeathCounter({
         </span>
         <span
           className="text-xs tracking-[0.3em] uppercase mt-1"
-          style={{ color: bossFightMode ? COLORS.bossAmberDark : COLORS.bloodRedDark }}
+          style={{ color: bossFightMode ? `${secondaryColor}CC` : `${accentColor}CC` }}
         >
           {bossFightMode ? 'BOSS DEATHS' : 'DEATHS'}
         </span>

@@ -158,8 +158,8 @@ export interface DailyStats {
   displayDate: string       // "9 января" Russian format
   playtime: number          // milliseconds
   deaths: number
-  stats: CharacterStats | null
-  statsDelta: StatsDelta | null
+  stats: CharacterStats | null  // TODO: Change to GameCharacterStats when rendering updated
+  statsDelta: StatsDelta | null // TODO: Change to GameStatsDelta when rendering updated
   bosses: BossFight[]
   milestones: Milestone[]
 }
@@ -189,7 +189,7 @@ export interface ProfileState {
   bossFights: BossFight[]
   pendingBoss: PendingBoss | null
   milestones: Milestone[]
-  characterStats: CharacterStats[]
+  characterStats: CharacterStats[]  // TODO: Change to GameCharacterStats when rendering updated
   overlayToken?: string | null
 
   // Visual configuration
@@ -233,7 +233,7 @@ export interface TimelinePoint {
   type: 'boss' | 'milestone' | 'stats' | 'death'
   time: number        // position on timeline (ms)
   endTime?: number    // only for boss (end of fight)
-  data: BossFight | Milestone | CharacterStats | DeathPoint
+  data: BossFight | Milestone | CharacterStats | DeathPoint  // TODO: Change CharacterStats to GameCharacterStats
 }
 
 // ============================================================================

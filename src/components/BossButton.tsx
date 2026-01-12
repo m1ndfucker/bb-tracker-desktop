@@ -10,6 +10,10 @@ interface BossButtonProps {
   onResume?: () => void
   onCancel?: () => void
   canEdit?: boolean
+  colors?: {
+    primary: string
+    secondary: string
+  }
 }
 
 export function BossButton({
@@ -19,8 +23,12 @@ export function BossButton({
   onPause,
   onResume,
   onCancel,
-  canEdit
+  canEdit,
+  colors
 }: BossButtonProps) {
+  const primaryColor = colors?.primary ?? COLORS.boneWhite
+  const secondaryColor = colors?.secondary ?? COLORS.bossAmber
+
   if (bossFightMode) {
     return (
       <div className="flex gap-2">
@@ -29,11 +37,11 @@ export function BossButton({
           disabled={!canEdit}
           className="flex-1 py-2 px-4 text-sm tracking-wider transition-all duration-200 disabled:opacity-50 hover:brightness-110"
           style={{
-            backgroundColor: COLORS.bossAmberDark,
-            border: `1px solid ${COLORS.bossAmber}`,
-            color: COLORS.boneWhite,
+            backgroundColor: `${secondaryColor}CC`,
+            border: `1px solid ${secondaryColor}`,
+            color: primaryColor,
             fontFamily: "'Liberation Serif', Georgia, serif",
-            boxShadow: '0 0 15px rgba(143, 186, 168, 0.3)',
+            boxShadow: `0 0 15px ${secondaryColor}4D`,
           }}
         >
           PREY SLAUGHTERED
@@ -45,8 +53,8 @@ export function BossButton({
             disabled={!canEdit}
             className="py-2 px-3 text-sm transition-all disabled:opacity-50 hover:bg-white/5"
             style={{
-              border: `1px solid ${COLORS.bossAmber}`,
-              color: COLORS.bossAmber,
+              border: `1px solid ${secondaryColor}`,
+              color: secondaryColor,
             }}
             title="Resume Boss Timer"
           >
@@ -58,8 +66,8 @@ export function BossButton({
             disabled={!canEdit}
             className="py-2 px-3 text-sm transition-all disabled:opacity-50 hover:bg-white/5"
             style={{
-              border: `1px solid ${COLORS.bossAmber}`,
-              color: COLORS.bossAmber,
+              border: `1px solid ${secondaryColor}`,
+              color: secondaryColor,
             }}
             title="Pause Boss Timer"
           >
@@ -90,7 +98,7 @@ export function BossButton({
       className="w-full py-2 text-sm tracking-wider transition-all duration-200 disabled:opacity-50 hover:bg-white/5"
       style={{
         border: `1px solid ${COLORS.fogGray}`,
-        color: COLORS.bossAmber,
+        color: secondaryColor,
         fontFamily: "'Liberation Serif', Georgia, serif",
       }}
     >

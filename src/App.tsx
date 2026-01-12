@@ -10,8 +10,8 @@ import { COLORS, formatTime, MILESTONE_ICONS, STAT_ICONS, BASE_URL } from './lib
 import type { BossFight, Milestone, CharacterStats, PendingBoss, DailyStats, StatsDelta, DeathPoint, TimelinePoint } from './lib/types'
 import { ProfileList } from './components/ProfileList'
 import { OverlayWindow } from './pages/OverlayWindow'
-import { ProfileSettingsModal } from './components/ProfileSettingsModal'
-import { ProfileSettings } from './lib/types'
+import { resolveVisualConfig } from './lib/presetUtils'
+import { PresetSlug, VISUAL_PRESETS, ProfileSettings } from './lib/types'
 
 type AppView = 'profiles' | 'tracker'
 
@@ -107,14 +107,7 @@ function useTimelineZoom(elapsed: number) {
 // Timeline helper functions
 const RECENT_THRESHOLD = 120000 // 2 minutes - for pulsating animation
 
-function getPointColor(type: 'boss' | 'milestone' | 'stats' | 'death'): string {
-  switch (type) {
-    case 'boss': return COLORS.bossAmber
-    case 'milestone': return COLORS.coldGray
-    case 'death': return COLORS.bloodRed
-    case 'stats': return COLORS.boneWhite
-  }
-}
+// getPointColor moved inside component to use themeTimelineColors
 
 function App() {
   // Check if this is the overlay window
@@ -138,9 +131,10 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authPassword, setAuthPassword] = useState('')
   const [authError, setAuthError] = useState('')
+  const [pendingInitialPreset, setPendingInitialPreset] = useState<PresetSlug | null>(null)
 
   // Handle profile selection from ProfileList
-  const handleSelectProfile = useCallback((name: string, password?: string) => {
+  const handleSelectProfile = useCallback((name: string, password?: string, initialPreset?: PresetSlug) => {
     setProfileName(name)
     // Load password from localStorage if not provided
     const storedPassword = password || localStorage.getItem(`bb-password-${name}`) || undefined
@@ -149,6 +143,11 @@ function App() {
     // Save password if provided (for private profiles)
     if (password) {
       localStorage.setItem(`bb-password-${name}`, password)
+    }
+
+    // Store initial preset to apply after auth (for new profiles)
+    if (initialPreset) {
+      setPendingInitialPreset(initialPreset)
     }
 
     localStorage.setItem('bb-last-profile', name)
@@ -207,9 +206,6 @@ function App() {
 
   // Overlay style picker
   const [showOverlayPicker, setShowOverlayPicker] = useState(false)
-
-  // Profile settings modal
-  const [showProfileSettings, setShowProfileSettings] = useState(false)
 
   // Boss editing state (web version style)
   const [editingBoss, setEditingBoss] = useState<string | null>(null)
@@ -290,6 +286,21 @@ function App() {
   // canEdit check - show auth modal if not allowed
   const canEdit = state?.canEdit ?? false
 
+  // Apply pending initial preset when canEdit becomes true (for new profiles)
+  useEffect(() => {
+    if (canEdit && pendingInitialPreset && send) {
+      const preset = VISUAL_PRESETS[pendingInitialPreset]
+      if (preset) {
+        const settings: ProfileSettings = {
+          ...preset.config,
+          preset: pendingInitialPreset
+        }
+        send('bb-profile-settings', { settings })
+        setPendingInitialPreset(null)
+      }
+    }
+  }, [canEdit, pendingInitialPreset, send])
+
   const requireAuth = useCallback((action: () => void) => {
     if (canEdit) {
       action()
@@ -317,20 +328,25 @@ function App() {
   // Timeline zoom
   const { zoomLevel, getPosition, zoomIn, zoomOut, resetZoom, isZoomed, viewStart, viewEnd, dynamicCollisionThreshold } = useTimelineZoom(displayElapsed)
 
-  // Derive colors from profile settings
-  const themeColors = useMemo(() => {
-    const settings = state?.profileSettings
-    if (!settings) {
-      return {
-        primary: COLORS.boneWhite,
-        accent: COLORS.bloodRed,
-        secondary: COLORS.bossAmber,
-        background: COLORS.nearBlack,
-        cardBg: '#1a1a1a'
-      }
+  // Derive visual config from preset or legacy settings
+  // Uses resolveVisualConfig for backward compatibility with both systems
+  const visualConfig = useMemo(() => resolveVisualConfig(state), [state])
+
+  // Derive colors from visual config
+  const themeColors = useMemo(() => visualConfig.colors, [visualConfig])
+
+  // Derive timeline colors from visual config
+  const themeTimelineColors = useMemo(() => visualConfig.timeline, [visualConfig])
+
+  // Get point color using theme settings
+  const getPointColor = useCallback((type: 'boss' | 'milestone' | 'stats' | 'death'): string => {
+    switch (type) {
+      case 'boss': return themeTimelineColors.boss
+      case 'milestone': return themeTimelineColors.milestone
+      case 'death': return themeTimelineColors.death
+      case 'stats': return themeTimelineColors.stats
     }
-    return settings.colors
-  }, [state?.profileSettings])
+  }, [themeTimelineColors])
 
   // Save last profile (only when profileName is set)
   useEffect(() => {
@@ -665,62 +681,6 @@ function App() {
   const handleGenerateToken = useCallback(() => {
     requireAuth(() => send('bb-generate-token'))
   }, [requireAuth, send])
-
-  // Save profile settings
-  const handleSaveProfileSettings = useCallback((settings: ProfileSettings) => {
-    requireAuth(() => {
-      send('bb-profile-settings', { settings })
-      toast('Profile settings saved!')
-    })
-  }, [requireAuth, send, toast])
-
-  // Upload logo
-  const handleUploadLogo = useCallback(async (file: File): Promise<string | null> => {
-    if (!profileName) return null
-
-    try {
-      const response = await fetch(
-        `${BASE_URL}/api/bb-logo/${encodeURIComponent(profileName)}?auth=${encodeURIComponent(localStorage.getItem(`bb-password-${profileName}`) || '')}`,
-        {
-          method: 'POST',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        }
-      )
-
-      if (!response.ok) throw new Error('Upload failed')
-      const { url } = await response.json()
-      toast('Logo uploaded!')
-      return `${BASE_URL}${url}`
-    } catch (e) {
-      toast('Failed to upload logo')
-      return null
-    }
-  }, [profileName, toast])
-
-  // Upload background
-  const handleUploadBackground = useCallback(async (file: File): Promise<string | null> => {
-    if (!profileName) return null
-
-    try {
-      const response = await fetch(
-        `${BASE_URL}/api/bb-background/${encodeURIComponent(profileName)}?auth=${encodeURIComponent(localStorage.getItem(`bb-password-${profileName}`) || '')}`,
-        {
-          method: 'POST',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        }
-      )
-
-      if (!response.ok) throw new Error('Upload failed')
-      const { url } = await response.json()
-      toast('Background uploaded!')
-      return `${BASE_URL}${url}`
-    } catch (e) {
-      toast('Failed to upload background')
-      return null
-    }
-  }, [profileName, toast])
 
   const handleOpenOverlay = useCallback(async (style: 'minimal' | 'compact' | 'full' = 'compact') => {
     const token = state?.overlayToken
@@ -1113,20 +1073,19 @@ function App() {
       className="min-h-screen h-screen flex flex-col items-center justify-center relative overflow-hidden select-none"
       style={{ fontFamily: "'Liberation Serif', 'Times New Roman', serif", backgroundColor: themeColors.background }}
     >
-      {/* Profile logo if enabled */}
+      {/* Profile logo if enabled - top center */}
       {state?.profileSettings?.logo.enabled && state.profileSettings.logo.url && (
         <img
           src={state.profileSettings.logo.url}
           alt="Profile logo"
           className="fixed z-50 pointer-events-none"
           style={{
-            width: state.profileSettings.logo.size,
-            height: state.profileSettings.logo.size,
-            objectFit: 'contain',
-            ...(state.profileSettings.logo.position === 'top-left' && { top: 16, left: 16 }),
-            ...(state.profileSettings.logo.position === 'top-right' && { top: 16, right: 16 }),
-            ...(state.profileSettings.logo.position === 'bottom-left' && { bottom: 16, left: 16 }),
-            ...(state.profileSettings.logo.position === 'bottom-right' && { bottom: 16, right: 16 }),
+            top: 40,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            maxWidth: state.profileSettings.logo.size,
+            height: 'auto',
+            objectFit: 'contain'
           }}
         />
       )}
@@ -1314,7 +1273,7 @@ function App() {
                     </motion.span>
                   )}
                   {bossSegments.length > 1 && (
-                    <span className="text-xs" style={{ color: COLORS.bossAmberDark }}>({bossSegments.length})</span>
+                    <span className="text-xs" style={{ color: `${themeColors.secondary}99` }}>({bossSegments.length})</span>
                   )}
                 </motion.div>
               )}
@@ -1388,11 +1347,11 @@ function App() {
             <motion.div key="boss-buttons" className="flex items-center gap-10" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
               <motion.button onClick={() => requireAuth(() => setShowVictoryModal(true))} className="text-2xl tracking-[0.15em] uppercase" style={{ color: COLORS.coldGray }} whileHover={{ color: COLORS.boneWhite, scale: 1.05 }}>Victory</motion.button>
               {bossPaused ? (
-                <motion.button onClick={() => requireAuth(bossResume)} className="text-2xl tracking-[0.15em] uppercase" style={{ color: COLORS.bossAmber }} whileHover={{ color: COLORS.boneWhite, scale: 1.05 }}>Resume</motion.button>
+                <motion.button onClick={() => requireAuth(bossResume)} className="text-2xl tracking-[0.15em] uppercase" style={{ color: themeColors.secondary }} whileHover={{ color: themeColors.primary, scale: 1.05 }}>Resume</motion.button>
               ) : (
-                <motion.button onClick={() => requireAuth(bossPause)} className="text-2xl tracking-[0.15em] uppercase" style={{ color: COLORS.bossAmberDark }} whileHover={{ color: COLORS.bossAmber, scale: 1.05 }}>Pause</motion.button>
+                <motion.button onClick={() => requireAuth(bossPause)} className="text-2xl tracking-[0.15em] uppercase" style={{ color: `${themeColors.secondary}99` }} whileHover={{ color: themeColors.secondary, scale: 1.05 }}>Pause</motion.button>
               )}
-              <motion.button onClick={() => requireAuth(bossCancel)} className="text-2xl tracking-[0.15em] uppercase" style={{ color: COLORS.bloodRedDark }} whileHover={{ color: COLORS.bloodRed, scale: 1.05 }}>Cancel</motion.button>
+              <motion.button onClick={() => requireAuth(bossCancel)} className="text-2xl tracking-[0.15em] uppercase" style={{ color: `${themeColors.accent}99` }} whileHover={{ color: themeColors.accent, scale: 1.05 }}>Cancel</motion.button>
             </motion.div>
           ) : (
             <motion.div key="normal-buttons" className="flex items-center gap-10" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
@@ -1417,13 +1376,13 @@ function App() {
           <div
             className="relative px-3 py-3 flex items-center gap-2"
             style={{
-              background: `linear-gradient(135deg, ${COLORS.nearBlack}f0 0%, ${COLORS.nearBlack}a0 100%)`,
-              border: `1px solid ${COLORS.bossAmberDark}60`
+              background: `linear-gradient(135deg, ${themeColors.background}f0 0%, ${themeColors.background}a0 100%)`,
+              border: `1px solid ${themeColors.secondary}60`
             }}
           >
             <motion.span
               className="text-2xl"
-              style={{ color: COLORS.bossAmber, filter: 'blur(0.3px)' }}
+              style={{ color: themeColors.secondary, filter: 'blur(0.3px)' }}
               animate={{ rotate: showTimelinePanel ? 45 : 0 }}
               transition={{ duration: 0.4 }}
             >
@@ -1431,7 +1390,7 @@ function App() {
             </motion.span>
             <span
               className="text-2xl"
-              style={{ color: COLORS.bossAmber, fontFamily: "'Liberation Serif', serif" }}
+              style={{ color: themeColors.secondary, fontFamily: "'Liberation Serif', serif" }}
             >
               {state.bossFights.length + state.milestones.length + state.characterStats.length + state.deathTimestamps.length}
             </span>
@@ -1444,19 +1403,19 @@ function App() {
         {showTimelinePanel && (
           <motion.div
             className="fixed left-0 top-12 bottom-16 w-96 z-20 overflow-hidden flex flex-col"
-            style={{ background: `${COLORS.nearBlack}f8`, borderRight: `1px solid ${COLORS.fogGray}30` }}
+            style={{ background: themeTimelineColors.panelBg, borderRight: `1px solid ${COLORS.fogGray}30` }}
             initial={{ x: -400, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -400, opacity: 0 }}
           >
             {/* Panel header with tabs */}
             <div className="border-b" style={{ borderColor: `${COLORS.fogGray}30` }}>
-              <motion.button onClick={() => setShowTimelinePanel(false)} className="absolute right-3 top-3 w-8 h-8 flex items-center justify-center z-10" style={{ color: COLORS.bossAmberDark }} whileHover={{ color: COLORS.bossAmber, scale: 1.1 }}>✕</motion.button>
+              <motion.button onClick={() => setShowTimelinePanel(false)} className="absolute right-3 top-3 w-8 h-8 flex items-center justify-center z-10" style={{ color: `${themeColors.secondary}99` }} whileHover={{ color: themeColors.secondary, scale: 1.1 }}>✕</motion.button>
               <div className="flex">
-                <button onClick={() => setPanelTab('timeline')} className="flex-1 py-4 text-sm tracking-[0.1em] uppercase transition-all" style={{ color: panelTab === 'timeline' ? COLORS.bossAmber : COLORS.fogGray, borderBottom: panelTab === 'timeline' ? `2px solid ${COLORS.bossAmber}` : '2px solid transparent' }}>Timeline</button>
-                <button onClick={() => setPanelTab('daily')} className="flex-1 py-4 text-sm tracking-[0.1em] uppercase transition-all" style={{ color: panelTab === 'daily' ? COLORS.bossAmber : COLORS.fogGray, borderBottom: panelTab === 'daily' ? `2px solid ${COLORS.bossAmber}` : '2px solid transparent' }}>By Day</button>
+                <button onClick={() => setPanelTab('timeline')} className="flex-1 py-4 text-sm tracking-[0.1em] uppercase transition-all" style={{ color: panelTab === 'timeline' ? themeColors.secondary : COLORS.fogGray, borderBottom: panelTab === 'timeline' ? `2px solid ${themeColors.secondary}` : '2px solid transparent' }}>Timeline</button>
+                <button onClick={() => setPanelTab('daily')} className="flex-1 py-4 text-sm tracking-[0.1em] uppercase transition-all" style={{ color: panelTab === 'daily' ? themeColors.secondary : COLORS.fogGray, borderBottom: panelTab === 'daily' ? `2px solid ${themeColors.secondary}` : '2px solid transparent' }}>By Day</button>
               </div>
-              <p className="text-xs px-5 pb-3" style={{ color: COLORS.bossAmberDark }}>
+              <p className="text-xs px-5 pb-3" style={{ color: `${themeColors.secondary}99` }}>
                 {state.bossFights.length} bosses • {state.milestones.length} milestones • {state.deathTimestamps.length} deaths
               </p>
             </div>
@@ -2899,15 +2858,15 @@ function App() {
           {/* Base line */}
           <div
             className="absolute left-0 right-0 bottom-[28px] h-[2px]"
-            style={{ backgroundColor: `${COLORS.fogGray}40` }}
+            style={{ backgroundColor: themeTimelineColors.progressBar }}
           />
 
           {/* Current time indicator (right edge, pulsing) */}
           <motion.div
             className="absolute right-0 bottom-[21px] w-[4px] h-[16px] rounded-full"
             style={{
-              backgroundColor: COLORS.bloodRed,
-              boxShadow: `0 0 8px ${COLORS.bloodRed}`
+              backgroundColor: themeTimelineColors.death,
+              boxShadow: `0 0 8px ${themeTimelineColors.death}`
             }}
             animate={{ opacity: [0.6, 1, 0.6] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
@@ -2925,8 +2884,8 @@ function App() {
                 style={{
                   left: `${Math.max(0, startP)}%`,
                   width: `${Math.max(0.5, Math.min(100, endP) - Math.max(0, startP))}%`,
-                  backgroundColor: COLORS.bossAmber,
-                  boxShadow: `0 0 8px ${COLORS.bossAmber}`
+                  backgroundColor: themeTimelineColors.boss,
+                  boxShadow: `0 0 8px ${themeTimelineColors.boss}`
                 }}
               />
             )
@@ -2945,7 +2904,7 @@ function App() {
                 style={{
                   left: `${Math.max(0, startP)}%`,
                   width: `${Math.max(0.5, Math.min(100, endP) - Math.max(0, startP))}%`,
-                  backgroundColor: COLORS.bossAmber
+                  backgroundColor: themeTimelineColors.boss
                 }}
                 animate={{ opacity: [0.5, 1, 0.5] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
@@ -3217,17 +3176,6 @@ function App() {
         >
           {state?.overlayToken ? 'New Token' : 'Get Token'}
         </motion.button>
-        <motion.button
-          onClick={() => requireAuth(() => setShowProfileSettings(true))}
-          className="text-xs px-2 py-0.5 rounded"
-          style={{
-            color: COLORS.coldGray,
-            border: `1px solid ${COLORS.fogGray}40`
-          }}
-          whileHover={{ borderColor: COLORS.bossAmber, color: COLORS.bossAmber }}
-        >
-          Settings
-        </motion.button>
       </div>
 
       {/* Save/Load/Export buttons */}
@@ -3362,15 +3310,6 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Profile Settings Modal */}
-      <ProfileSettingsModal
-        isOpen={showProfileSettings}
-        onClose={() => setShowProfileSettings(false)}
-        settings={state?.profileSettings || null}
-        onSave={handleSaveProfileSettings}
-        onUploadLogo={handleUploadLogo}
-        onUploadBackground={handleUploadBackground}
-      />
 
     </div>
   )
