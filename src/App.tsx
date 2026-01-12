@@ -198,6 +198,11 @@ function App() {
     skill: 10, bloodtinge: 7, arcane: 6,
     bloodEchoes: 0, insight: 0, notes: ''
   })
+  const [eldenRingStatsForm, setEldenRingStatsForm] = useState({
+    level: 1, vigor: 10, mind: 10, endurance: 10,
+    strength: 10, dexterity: 10, intelligence: 10,
+    faith: 10, arcane: 10, runes: 0, notes: ''
+  })
 
   // Timeline Panel
   const [showTimelinePanel, setShowTimelinePanel] = useState(false)
@@ -492,6 +497,19 @@ function App() {
       })
     })
   }, [requireAuth, send, statsForm])
+
+  // Elden Ring stats handler
+  const handleAddEldenRingStats = useCallback(() => {
+    requireAuth(() => {
+      send('bb-stats-add', { ...eldenRingStatsForm, game: 'elden-ring' })
+      setShowStatsModal(false)
+      setEldenRingStatsForm({
+        level: 1, vigor: 10, mind: 10, endurance: 10,
+        strength: 10, dexterity: 10, intelligence: 10,
+        faith: 10, arcane: 10, runes: 0, notes: ''
+      })
+    })
+  }, [requireAuth, send, eldenRingStatsForm])
 
   const handleDeleteStats = useCallback((id: string) => {
     requireAuth(() => {
@@ -3285,9 +3303,9 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* Stats Modal */}
+      {/* Stats Modal - Bloodborne */}
       <AnimatePresence>
-        {showStatsModal && (
+        {showStatsModal && (state?.presetSlug === 'bloodborne' || !state?.presetSlug) && (
           <motion.div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowStatsModal(false)}>
             <motion.div className="p-8 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: COLORS.nearBlack, border: `1px solid ${COLORS.ashGray}` }} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()}>
               <h3 className="text-2xl mb-2 tracking-[0.15em] text-center uppercase" style={{ color: COLORS.coldGray }}>Character Stats</h3>
@@ -3304,6 +3322,31 @@ function App() {
               <div className="flex gap-6 justify-center">
                 <motion.button onClick={() => setShowStatsModal(false)} style={{ color: COLORS.ashGray }} whileHover={{ color: COLORS.coldGray }}>Cancel</motion.button>
                 <motion.button onClick={handleAddStats} className="tracking-wider" style={{ color: COLORS.coldGray }} whileHover={{ color: COLORS.boneWhite }}>Save</motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Stats Modal - Elden Ring */}
+      <AnimatePresence>
+        {showStatsModal && state?.presetSlug === 'elden-ring' && (
+          <motion.div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowStatsModal(false)}>
+            <motion.div className="p-8 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" style={{ backgroundColor: '#0B0B0B', border: '1px solid #5E6A6F' }} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-2xl mb-2 tracking-[0.15em] text-center uppercase" style={{ color: '#C9A24D' }}>Character Stats</h3>
+              <p className="text-sm mb-4 text-center" style={{ color: '#5E6A6F' }}>Time: {formatTime(elapsed)}</p>
+              <div className="grid grid-cols-5 gap-3 mb-4">
+                {[{ key: 'level', label: 'Level' }, { key: 'vigor', label: 'VIG' }, { key: 'mind', label: 'MND' }, { key: 'endurance', label: 'END' }, { key: 'strength', label: 'STR' }, { key: 'dexterity', label: 'DEX' }, { key: 'intelligence', label: 'INT' }, { key: 'faith', label: 'FTH' }, { key: 'arcane', label: 'ARC' }, { key: 'runes', label: 'Runes' }].map(({ key, label }) => (
+                  <div key={key} className={key === 'runes' ? 'col-span-5' : ''}>
+                    <label className="text-xs uppercase tracking-wider mb-1 block" style={{ color: '#5E6A6F' }}>{label}</label>
+                    <input type="number" value={eldenRingStatsForm[key as keyof typeof eldenRingStatsForm]} onChange={(e) => setEldenRingStatsForm(prev => ({ ...prev, [key]: parseInt(e.target.value) || 0 }))} className="w-full px-2 py-1.5 text-center focus:outline-none" style={{ backgroundColor: 'transparent', color: key === 'level' ? '#C9A24D' : '#D6D1C4', border: '1px solid #5E6A6F' }} />
+                  </div>
+                ))}
+              </div>
+              <textarea value={eldenRingStatsForm.notes} onChange={(e) => setEldenRingStatsForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="Notes (optional)..." className="w-full px-3 py-2 mb-4 focus:outline-none resize-none" style={{ backgroundColor: 'transparent', color: '#D6D1C4', border: '1px solid #5E6A6F' }} rows={2} />
+              <div className="flex gap-6 justify-center">
+                <motion.button onClick={() => setShowStatsModal(false)} style={{ color: '#5E6A6F' }} whileHover={{ color: '#D6D1C4' }}>Cancel</motion.button>
+                <motion.button onClick={handleAddEldenRingStats} className="tracking-wider" style={{ color: '#C9A24D' }} whileHover={{ color: '#D6D1C4' }}>Save</motion.button>
               </div>
             </motion.div>
           </motion.div>
